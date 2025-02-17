@@ -15,7 +15,7 @@
 # how many gpus to use
 # each node has 4 gpus
 
-#SBATCH --time=10:00
+#SBATCH --time=1-00:00:00
 # job length: the job will run either until completion or until this timer runs out
 
 #SBATCH --error=job.%J.err
