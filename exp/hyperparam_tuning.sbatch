@@ -33,14 +33,6 @@
 
 # here will be your commands for running the script
 
-import optuna
-import numpy as np
-import torch
-import hockey.hockey_env as h_env
-from hockey.hockey_env import Mode
-from KI_PPO_ppg2 import PPO_2, Memory
-
-
 # Copy dataset to scratch folder (if needed)
 cp -R KI_PPO_ppg2.py /scratch/$SLURM_JOB_ID/
 cp -R hyperparam_search.py /scratch/$SLURM_JOB_ID/
