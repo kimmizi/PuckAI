@@ -10,7 +10,6 @@ checkpoint_dir = "./checkpoints_ppg"
 
 max_episodes = 2001
 max_timesteps = 500
-update_timestep = 5001
 checkpoint_freq = 500
 
 memory = Memory()
@@ -25,15 +24,18 @@ state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 
 
-def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase ):
+def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase, update_timestep):
+
     # Initialize PPO agent with given hyperparameters
-    ppo_agent = PPO_2(state_dim, action_dim, n_latent_var=n_latent_var, lr=lr, gamma=gamma, eps_clip=eps_clip, K_epochs=K_epochs, has_continuous_action_space=True, action_std_init=action_std, betas=(0.9, 0.999))
+    ppo_agent = PPO_2(state_dim, action_dim, n_latent_var=n_latent_var, lr=lr, gamma=gamma,
+                      eps_clip=eps_clip, K_epochs=K_epochs, has_continuous_action_space=True,
+                      action_std_init=action_std, betas=(0.9, 0.999))
 
     memory = Memory()
 
     # Train the agent
     episode_rewards = []
-    for episode in range(100):
+    for episode in range(1000):
         print("Episode: ", episode)
 
         state, _ = env.reset()
@@ -55,27 +57,42 @@ def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase
             episode_reward += reward
             state = next_state
 
-        ppo_agent.update(memory)
+        # Auxiliary phase: Train value function
+        if episode % aux_phase == 0:
+            ppo_agent.auxiliary_phase(memory)
+
+        if episode % update_timestep == 0:
+            ppo_agent.update(memory)
+            memory.clear_memory()
+            timestep = 0
+
+        # ppo_agent.update(memory)
         episode_rewards.append(episode_reward)
 
     # Return the average reward
     return torch.mean(torch.tensor(episode_rewards)).item()
 
 def objective(trial):
-    lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
+    lr = trial.suggest_float("lr", 1e-8, 1e-2, log = True)
     gamma = trial.suggest_float("gamma", 0.9, 0.999)
     eps_clip = trial.suggest_float("eps_clip", 0.1, 0.3)
-    K_epochs = trial.suggest_int("K_epochs", 4, 20)
-    n_latent_var = trial.suggest_int("n_latent_var", 32, 256, log=True)
+    K_epochs = trial.suggest_int("K_epochs", 4, 50)
+    n_latent_var = trial.suggest_int("n_latent_var", 32, 512, log = True)
     action_std = trial.suggest_float("action_std", 0.1, 1.0)
     aux_phase = trial.suggest_int("aux_phase", 5, 100)
-    return train_ppo(lr = lr, gamma = gamma, eps_clip = eps_clip, K_epochs = K_epochs, n_latent_var = n_latent_var, action_std = action_std, aux_phase = aux_phase)
+    update_timestep = trial.suggest_int("update_timestep", 100, 1000)
+    return train_ppo(lr = lr, gamma = gamma, eps_clip = eps_clip, K_epochs = K_epochs,
+                     n_latent_var = n_latent_var, action_std = action_std,
+                     aux_phase = aux_phase, update_timestep = update_timestep)
 
-study = optuna.create_study(direction="maximize")
-study.optimize(objective, n_trials=50)
+study = optuna.create_study(direction = "maximize")
+study.optimize(objective, n_trials = 100)
 
 print("Best hyperparameters:", study.best_params)
+print("Best value:", study.best_value)
 
 # Save the best hyperparameters
 best_params = study.best_params
+best_value = study.best_value
 np.save("best_params.npy", best_params)
+np.save("best_value.npy", best_value)
