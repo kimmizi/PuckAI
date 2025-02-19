@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.distributions import Beta
 # import torch.optim as optim
 # import numpy as np
 import os
 # from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
-# import torch.nn.functional as F
 # import torch.distributions as distributions
 
 
@@ -39,6 +40,7 @@ class Memory:
 
 # The base of this implementation of the ActorCritic class was taken from the solution to exercise 08_Gym-PPO-solution/PPO.py
 # of the Reinforcement Learning course WiSe 24/25 by Prof. Martius:
+
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init):
@@ -97,7 +99,15 @@ class ActorCritic(nn.Module):
             state = torch.from_numpy(state).float().to(device)
             action_mean = self.action_layer(state)
             action_std = self.log_std.exp().expand_as(action_mean)
-            dist = torch.distributions.Normal(action_mean, action_std)
+
+            ### ADJUSTMENT TO VANILLA PPO:
+            # use beta distribution for continuous action spaces instead of normal distribution
+
+            # alpha, beta > 1
+            action_mean = torch.clamp(action_mean, 1e-6, 1 - 1e-6)
+            action_std = torch.clamp(action_std, 1e-6, 1 - 1e-6)
+
+            dist = Beta(action_mean, action_std)
             action = dist.sample()
 
             memory.states.append(state)
@@ -141,14 +151,11 @@ class ActorCritic(nn.Module):
             return action_logprobs, torch.squeeze(state_value), dist_entropy
 
 
-
-
-
 ##############################################
 # PPO Class
 ##############################################
 
-class PPO_2:
+class PPO_optim:
     def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init, c1, c2):
         self.lr = lr
         self.betas = betas
@@ -228,7 +235,7 @@ class PPO_2:
             # Take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm = 0.5)  # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)  # Gradient clipping
             self.optimizer.step()
 
         # Copy new weights into old policy:
