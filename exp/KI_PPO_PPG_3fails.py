@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 import torch.nn.functional as F
 from torch.distributions import Beta
 # import torch.optim as optim
@@ -103,11 +104,11 @@ class ActorCritic(nn.Module):
             ### ADJUSTMENT TO VANILLA PPO:
             # use beta distribution for continuous action spaces instead of normal distribution
 
-            # alpha, beta > 1
-            action_mean = torch.clamp(action_mean, 1e-6, 1 - 1e-6)
-            action_std = torch.clamp(action_std, 1e-6, 1 - 1e-6)
+            # alpha, beta > 1: log(1 + exp(x)) + 1
+            alpha = torch.log(1 + torch.exp(action_mean)) + 1
+            beta = torch.log(1 + torch.exp(action_std)) + 1
 
-            dist = Beta(action_mean, action_std)
+            dist = Beta(alpha, action_std)
             action = dist.sample()
 
             memory.states.append(state)
@@ -156,7 +157,7 @@ class ActorCritic(nn.Module):
 ##############################################
 
 class PPO_optim:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init, c1, c2):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init, c1, c2, beta_clone):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -174,6 +175,8 @@ class PPO_optim:
 
         self.c1 = c1
         self.c2 = c2
+
+        self.beta_clone = beta_clone
 
         self.aux_optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)  # Separate optimizer for auxiliary phase
 
@@ -263,16 +266,18 @@ class PPO_optim:
 
         # Train the value function
         for _ in range(self.K_epochs):
-            _, state_values, _ = self.policy.evaluate(old_states, old_actions)
-            value_loss = self.MseLoss(state_values, rewards)  # Value function loss
 
-            # Distillation loss: Match value predictions from policy phase
+            # Auxiliary loss: Laux = 0.5 * ^E[(V(s) - V_targ)^2
+            _, state_values, _ = self.policy.evaluate(old_states, old_actions)
+            aux_loss = 0.5 * self.MseLoss(state_values, rewards)
+
+            # Behavioral cloning loss: Lbc = 0.5 * ^E[(V(s) - V_old(s))^2
             with torch.no_grad():
                 _, old_state_values, _ = self.policy_old.evaluate(old_states, old_actions)
-            distillation_loss = self.MseLoss(state_values, old_state_values)
+            bc_loss = self.MseLoss(state_values, old_state_values)
 
-            # Total loss
-            total_loss = value_loss + distillation_loss
+            # Joint loss
+            total_loss = aux_loss + self.beta_clone * bc_loss
 
             # Take gradient step
             self.aux_optimizer.zero_grad()

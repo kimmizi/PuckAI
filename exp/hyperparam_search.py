@@ -15,12 +15,12 @@ state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 
 
-def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase, update_timestep, betas, c1, c2):
+def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase, update_timestep, betas, c1, c2, beta_clone):
 
     # Initialize PPO agent with given hyperparameters
     ppo_agent = PPO_optim(state_dim, action_dim, n_latent_var = n_latent_var, lr = lr, gamma = gamma,
                       eps_clip = eps_clip, K_epochs = K_epochs, has_continuous_action_space = True,
-                      action_std_init = action_std, betas = betas, c1 = c1, c2 = c2)
+                      action_std_init = action_std, betas = betas, c1 = c1, c2 = c2, beta_clone = beta_clone)
 
     memory = Memory()
 
@@ -75,10 +75,11 @@ def objective(trial):
     betas = (beta1, beta2)
     c1 = trial.suggest_float("c1", 0.1, 1.0)
     c2 = trial.suggest_float("c2", 0.1, 1.0)
+    beta_clone = trial.suggest_float("beta_clone", 0.1, 1.0)
     return train_ppo(lr = lr, gamma = gamma, eps_clip = eps_clip, K_epochs = K_epochs,
                      n_latent_var = n_latent_var, action_std = action_std,
                      aux_phase = aux_phase, update_timestep = update_timestep, betas = betas,
-                     c1 = c1, c2 = c2)
+                     c1 = c1, c2 = c2, beta_clone = beta_clone)
 
 study = optuna.create_study(direction = "maximize")
 study.optimize(objective, n_trials = 100)
