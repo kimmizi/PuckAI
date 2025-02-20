@@ -149,10 +149,11 @@ class ActorCritic(nn.Module):
 ##############################################
 
 class PPO_2:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init, c1, c2):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, gae_lambda, K_epochs, eps_clip, has_continuous_action_space, action_std_init, c1, c2):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
+        self.gae_lambda = gae_lambda
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
 
@@ -193,23 +194,45 @@ class PPO_2:
             self.set_action_std(self.action_std)
 
     def update(self, memory):
-        # Monte Carlo estimate of state rewards:
-        rewards = []
-        discounted_reward = 0
-        for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
-            if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
 
-        # Normalizing the rewards:
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        # # Monte Carlo estimate of state rewards:
+        # rewards = []
+        # discounted_reward = 0
+        # for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
+        #     if is_terminal:
+        #         discounted_reward = 0
+        #     discounted_reward = reward + (self.gamma * discounted_reward)
+        #     rewards.insert(0, discounted_reward)
+
+        # # Normalizing the rewards:
+        # rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
         old_states = torch.stack(memory.states).to(device).detach()
         old_actions = torch.stack(memory.actions).to(device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
+
+        # Compute state values from old policy
+        with torch.no_grad():
+            old_values = self.policy_old.evaluate(old_states, old_actions)[1].squeeze()
+
+        # GAE for computing advantages:
+        advantages = []
+        returns = []
+        gae = 0
+        for i in reversed(range(len(memory.rewards))):
+            delta = memory.rewards[i] + self.gae_lambda * \
+                (0 if memory.is_terminals[i] else self.policy_old.value_layer(memory.states[i])) - \
+                self.policy_old.value_layer(memory.states[i])
+            gae = delta + self.gae_lambda * 0.95 * \
+                (0 if memory.is_terminals[i] else gae)
+            advantages.insert(0, gae)
+            returns.insert(0, gae + self.policy_old.value_layer(memory.states[i]))
+        advantages = torch.tensor(advantages, dtype=torch.float32).to(device)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+        returns = torch.tensor(returns, dtype=torch.float32).to(device)
+
 
         # Optimize policy for K epochs:
         for _ in range(self.K_epochs):
@@ -220,10 +243,10 @@ class PPO_2:
             ratios = torch.exp(logprobs - old_logprobs.detach())
 
             # Finding Surrogate Loss
-            advantages = rewards - state_values.detach()
+            # advantages = rewards - state_values.detach()
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            loss = -torch.min(surr1, surr2) + self.c1 * self.MseLoss(state_values, rewards) - self.c2 * dist_entropy
+            loss = -torch.min(surr1, surr2) + self.c1 * self.MseLoss(state_values, returns) - self.c2 * dist_entropy
 
             # Take gradient step
             self.optimizer.zero_grad()
@@ -242,22 +265,43 @@ class PPO_2:
         old_actions = torch.stack(memory.actions).to(device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
 
-        # Monte Carlo estimate of state rewards
-        rewards = []
-        discounted_reward = 0
-        for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
-            if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
+        # Compute state values from old policy
+        with torch.no_grad():
+            old_values = self.policy_old.evaluate(old_states, old_actions)[1].squeeze()
 
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        # # Monte Carlo estimate of state rewards
+        # rewards = []
+        # discounted_reward = 0
+        # for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
+        #     if is_terminal:
+        #         discounted_reward = 0
+        #     discounted_reward = reward + (self.gamma * discounted_reward)
+        #     rewards.insert(0, discounted_reward)
+        #
+        # rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+
+        # GAE for computing advantages:
+        advantages = []
+        returns = []
+        gae = 0
+        for i in reversed(range(len(memory.rewards))):
+            delta = memory.rewards[i] + self.gae_lambda * \
+                (0 if memory.is_terminals[i] else self.policy_old.value_layer(memory.states[i])) - \
+                self.policy_old.value_layer(memory.states[i])
+            gae = delta + self.gae_lambda * 0.95 * \
+                (0 if memory.is_terminals[i] else gae)
+            advantages.insert(0, gae)
+            returns.insert(0, gae + self.policy_old.value_layer(memory.states[i]))
+        advantages = torch.tensor(advantages, dtype=torch.float32).to(device)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+        returns = torch.tensor(returns, dtype=torch.float32).to(device)
+
 
         # Train the value function
         for _ in range(self.K_epochs):
             _, state_values, _ = self.policy.evaluate(old_states, old_actions)
-            value_loss = self.MseLoss(state_values, rewards)  # Value function loss
+            value_loss = self.MseLoss(state_values, returns)  # Value function loss
 
             # Distillation loss: Match value predictions from policy phase
             with torch.no_grad():

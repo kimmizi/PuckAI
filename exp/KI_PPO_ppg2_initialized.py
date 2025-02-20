@@ -1,13 +1,11 @@
 import torch
 import torch.nn as nn
-import numpy as np
-import torch.nn.functional as F
-from torch.distributions import Beta
 # import torch.optim as optim
 # import numpy as np
 import os
 # from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
+# import torch.nn.functional as F
 # import torch.distributions as distributions
 
 
@@ -43,7 +41,7 @@ class Memory:
 # of the Reinforcement Learning course WiSe 24/25 by Prof. Martius:
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init):
+    def __init__(self, state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic):
         super(ActorCritic, self).__init__()
 
         self.has_continuous_action_space = has_continuous_action_space
@@ -51,63 +49,92 @@ class ActorCritic(nn.Module):
         if has_continuous_action_space:
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
-
-        # We can have continous or discrete action spaces:
-        if has_continuous_action_space:
-            self.action_layer = nn.Sequential(
-                nn.Linear(state_dim, n_latent_var),
-                nn.LayerNorm(n_latent_var),
-                nn.Tanh(),
-                nn.Linear(n_latent_var, n_latent_var),
-                nn.LayerNorm(n_latent_var),
-                nn.Tanh(),
-                nn.Linear(n_latent_var, action_dim),
-                nn.Tanh()  # Use Tanh to bound actions to [-1, 1]
-            )
-            # Learnable log standard deviation parameter
             self.log_std = nn.Parameter(torch.zeros(action_dim))
 
-        else:
-            self.action_layer = nn.Sequential(
-                nn.Linear(state_dim, n_latent_var),
-                nn.LayerNorm(n_latent_var),
-                nn.Tanh(),
-                nn.Linear(n_latent_var, n_latent_var),
-                nn.LayerNorm(n_latent_var),
-                nn.Tanh(),
-                nn.Linear(n_latent_var, action_dim),
-                nn.Softmax(dim=-1)
-            )
 
-        # critic
-        self.value_layer = nn.Sequential(
-            nn.Linear(state_dim, n_latent_var),
-            nn.LayerNorm(n_latent_var),
-            nn.Tanh(),
-            nn.Linear(n_latent_var, n_latent_var),
-            nn.LayerNorm(n_latent_var),
-            nn.Tanh(),
-            nn.Linear(n_latent_var, 1)
-        )
+        # Activation function
+        activation_function = nn.Tanh  # Default, can be modified
+
+        # Actor Network Initialization
+        self.action_layer = []
+
+        self.action_layer.append(nn.Linear(state_dim, n_latent_var))
+        self.action_layer.append(activation_function())
+
+        # Actor Network Initialization
+        for i in range(network_depth_actor):
+            self.action_layer.append(nn.Linear(n_latent_var, n_latent_var))
+            self.action_layer.append(activation_function())
+
+        self.action_layer.append(nn.Linear(n_latent_var, action_dim))
+        if has_continuous_action_space:
+            self.action_layer.append(nn.Tanh())
+
+
+        # self.action_layer = nn.Sequential(
+        #     nn.Linear(state_dim, n_latent_var),
+        #     nn.LayerNorm(n_latent_var),
+        #     activation_function(),
+        #     nn.Linear(n_latent_var, n_latent_var),
+        #     nn.LayerNorm(n_latent_var),
+        #     activation_function(),
+        #     nn.Linear(n_latent_var, action_dim),
+        #     nn.Tanh() if has_continuous_action_space else nn.Softmax(dim=-1)
+        # )
+
+        # Critic Network Initialization
+        self.value_layer = []
+
+        self.value_layer.append(nn.Linear(state_dim, n_latent_var))
+        self.value_layer.append(activation_function())
+
+        for i in range(network_depth_critic):
+            self.value_layer.append(nn.Linear(n_latent_var, n_latent_var))
+            self.value_layer.append(activation_function())
+
+        self.value_layer.append(nn.Linear(n_latent_var, 1))
+
+
+        # self.value_layer = nn.Sequential(
+        #     nn.Linear(state_dim, n_latent_var),
+        #     nn.LayerNorm(n_latent_var),
+        #     activation_function(),
+        #     nn.Linear(n_latent_var, n_latent_var),
+        #     nn.LayerNorm(n_latent_var),
+        #     activation_function(),
+        #     nn.Linear(n_latent_var, 1)
+        # )
+
+        self.critic = nn.Sequential(*self.value_layer)
+
+        # Initialization
+        for layer in self.action_layer[:-2]:
+            if isinstance(layer, nn.Linear):
+                torch.nn.init.xavier_uniform_(layer.weight, gain=0.01)
+                # torch.nn.init.orthogonal_(layer.weight, gain=0.01)
+
+        for layer in self.value_layer[:-1]:
+            if isinstance(layer, nn.Linear):
+                torch.nn.init.orthogonal_(layer.weight, gain=0.01)
+
+        self.action_layer = nn.Sequential(*self.action_layer)
+
+        self.value_layer = nn.Sequential(*self.value_layer)
+
+        self.to(device)
 
     def set_action_std(self, new_action_std):
+        """Update action standard deviation"""
         if self.has_continuous_action_space:
             self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
+            self.log_std.data.fill_(torch.log(torch.tensor(new_action_std)))  # Update log_std
 
     def act(self, state, memory):
         if self.has_continuous_action_space:
             state = torch.from_numpy(state).float().to(device)
             action_mean = self.action_layer(state)
             action_std = self.log_std.exp().expand_as(action_mean)
-
-            ### ADJUSTMENT TO VANILLA PPO:
-            # use beta distribution for continuous action spaces instead of normal distribution
-
-            # alpha, beta > 1: log(1 + exp(x)) + 1
-            alpha = torch.log(1 + torch.exp(action_mean)) + 1
-            beta = torch.log(1 + torch.exp(action_std)) + 1
-
-            dist = Beta(alpha, beta)
+            dist = torch.distributions.Normal(action_mean, action_std)
             action = dist.sample()
 
             memory.states.append(state)
@@ -126,7 +153,6 @@ class ActorCritic(nn.Module):
             memory.logprobs.append(dist.log_prob(action))
 
             return action.item()
-
 
     def evaluate(self, state, action):
         if self.has_continuous_action_space:
@@ -151,21 +177,24 @@ class ActorCritic(nn.Module):
             return action_logprobs, torch.squeeze(state_value), dist_entropy
 
 
+
 ##############################################
 # PPO Class
 ##############################################
 
-class PPO_optim:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init, c1, c2, beta_clone):
+class PPO_init:
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space,
+                 action_std_init, c1, c2, beta_clone, network_depth_actor, network_depth_critic):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
 
-        self.policy = ActorCritic(state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init).to(device)
+        self.policy = ActorCritic(state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic).to(device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
-        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init).to(device)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.9)  # Reduce LR every 10 epochs
+        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         self.MseLoss = nn.MSELoss()
@@ -179,7 +208,6 @@ class PPO_optim:
 
         self.aux_optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)  # Separate optimizer for auxiliary phase
 
-
         if has_continuous_action_space:
             self.action_std = action_std_init
 
@@ -192,13 +220,14 @@ class PPO_optim:
     def decay_action_std(self, action_std_decay_rate, min_action_std):
         print("--------------------------------------------------------------------------------------------")
         if self.has_continuous_action_space:
-            self.action_std = self.action_std - action_std_decay_rate
-            self.action_std = round(self.action_std, 4)
-            if (self.action_std <= min_action_std):
-                self.action_std = min_action_std
-                print("setting actor output action_std to min_action_std : ", self.action_std)
-            else:
-                print("setting actor output action_std to : ", self.action_std)
+            # self.action_std = self.action_std - action_std_decay_rate
+            # self.action_std = round(self.action_std, 4)
+            # if (self.action_std <= min_action_std):
+            #     self.action_std = min_action_std
+            #     print("setting actor output action_std to min_action_std : ", self.action_std)
+            # else:
+            #     print("setting actor output action_std to : ", self.action_std)
+            self.action_std = max(self.action_std * action_std_decay_rate, min_action_std)
             self.set_action_std(self.action_std)
 
     def update(self, memory):
@@ -213,12 +242,16 @@ class PPO_optim:
 
         # Normalizing the rewards:
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = torch.clamp(rewards, min=-10, max=10)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
-        old_states = torch.stack(memory.states).to(device).detach()
-        old_actions = torch.stack(memory.actions).to(device).detach()
-        old_logprobs = torch.stack(memory.logprobs).to(device).detach()
+        # old_states = torch.stack(memory.states).to(device).detach()
+        # old_actions = torch.stack(memory.actions).to(device).detach()
+        # old_logprobs = torch.stack(memory.logprobs).to(device).detach()
+        old_states = torch.squeeze(torch.stack([memory.states[i] for i in range(len(memory.states))])).to(device).detach()
+        old_actions = torch.squeeze(torch.stack([memory.actions[i] for i in range(len(memory.actions))])).to(device).detach()
+        old_logprobs = torch.squeeze(torch.stack([memory.logprobs[i] for i in range(len(memory.logprobs))])).to(device).detach()
 
         # Optimize policy for K epochs:
         for _ in range(self.K_epochs):
@@ -237,8 +270,9 @@ class PPO_optim:
             # Take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)  # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm = 0.2)  # Gradient clipping
             self.optimizer.step()
+            self.scheduler.step()  # Update learning rate
 
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
@@ -261,6 +295,7 @@ class PPO_optim:
             rewards.insert(0, discounted_reward)
 
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = torch.clamp(rewards, min=-10, max=10)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # Train the value function

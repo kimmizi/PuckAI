@@ -4,13 +4,13 @@ import torch
 import hockey.hockey_env as h_env
 from hockey.hockey_env import Mode
 # from KI_PPO_ppg2 import PPO_2, Memory
-from KI_PPO_PPG_3fails import PPO_optim, Memory
+# from KI_PPO_PPG_3fails import PPO_optim, Memory
+from KI_PPO_ppg2_initialized import PPO_init, Memory
 
 memory = Memory()
 timestep = 0
 
 env = h_env.HockeyEnv_BasicOpponent(mode = Mode.NORMAL, weak_opponent = False)
-# env = h_env.HockeyEnv(mode = Mode.NORMAL)
 state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 
@@ -18,7 +18,7 @@ action_dim = env.action_space.shape[0]
 def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase, update_timestep, betas, c1, c2, beta_clone):
 
     # Initialize PPO agent with given hyperparameters
-    ppo_agent = PPO_optim(state_dim, action_dim, n_latent_var = n_latent_var, lr = lr, gamma = gamma,
+    ppo_agent = PPO_init(state_dim, action_dim, n_latent_var = n_latent_var, lr = lr, gamma = gamma,
                       eps_clip = eps_clip, K_epochs = K_epochs, has_continuous_action_space = True,
                       action_std_init = action_std, betas = betas, c1 = c1, c2 = c2, beta_clone = beta_clone)
 
@@ -26,7 +26,7 @@ def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var, action_std, aux_phase
 
     # Train the agent
     episode_rewards = []
-    for episode in range(1000):
+    for episode in range(500):
         print("Episode: ", episode)
 
         state, _ = env.reset()
@@ -68,7 +68,7 @@ def objective(trial):
     K_epochs = trial.suggest_int("K_epochs", 4, 50)
     n_latent_var = trial.suggest_int("n_latent_var", 32, 512, log = True)
     action_std = trial.suggest_float("action_std", 0.1, 1.0)
-    aux_phase = trial.suggest_int("aux_phase", 5, 100)
+    aux_phase = trial.suggest_int("aux_phase", 20, 100)
     update_timestep = trial.suggest_int("update_timestep", 100, 1000)
     beta1 = trial.suggest_float("beta1", 0.9, 0.999)
     beta2 = trial.suggest_float("beta2", 0.9, 0.999)
@@ -82,7 +82,7 @@ def objective(trial):
                      c1 = c1, c2 = c2, beta_clone = beta_clone)
 
 study = optuna.create_study(direction = "maximize")
-study.optimize(objective, n_trials = 100)
+study.optimize(objective, n_trials = 50)
 
 print("Best hyperparameters:", study.best_params)
 print("Best value:", study.best_value)
