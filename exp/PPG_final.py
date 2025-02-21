@@ -42,7 +42,9 @@ class Memory:
 
 # The base of this implementation of the ActorCritic class was taken from the solution to exercise 08_Gym-PPO-solution/PPO.py
 # of the Reinforcement Learning course WiSe 24/25 by Prof. Martius:
-# Adjustments have been made to handle both continous and discrete actions
+# Adjustments have been made
+# - implementing multiple layers of NN
+# - handling both continous and discrete actions
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init):
@@ -64,7 +66,6 @@ class ActorCritic(nn.Module):
         self.action_layer.append(nn.LayerNorm(n_latent_var_actor)),
         self.action_layer.append(activation_function())
 
-        # Actor Network Initialization
         for i in range(network_depth_actor):
             self.action_layer.append(nn.Linear(n_latent_var_actor, n_latent_var_actor))
             self.action_layer.append(nn.LayerNorm(n_latent_var_actor)),
@@ -74,6 +75,7 @@ class ActorCritic(nn.Module):
         if has_continuous_action_space:
             self.action_layer.append(nn.Tanh())
 
+        self.actor = nn.Sequential(*self.action_layer)
 
         # Critic Network Initialization
         self.value_layer = []
@@ -88,28 +90,24 @@ class ActorCritic(nn.Module):
 
         self.value_layer.append(nn.Linear(n_latent_var_critic, 1))
 
-        self.actor = nn.Sequential(*self.action_layer)
         self.critic = nn.Sequential(*self.value_layer)
 
     def set_action_std(self, new_action_std):
         if self.has_continuous_action_space:
             self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
 
-    def forward(self):
-        raise NotImplementedError
-
     def act(self, state, memory):
 
         if self.has_continuous_action_space:
             state = torch.from_numpy(state).float().to(device)
             action_mean = self.actor(state)
-            action_std = self.log_std.exp().expand_as(action_mean)  # Expand log_std to match action_mean
+            action_std = self.log_std.exp().expand_as(action_mean)
             dist = torch.distributions.Normal(action_mean, action_std)
             action = dist.sample()
 
             memory.states.append(state)
             memory.actions.append(action)
-            memory.logprobs.append(dist.log_prob(action).sum(-1))  # Sum over action dimensions
+            memory.logprobs.append(dist.log_prob(action).sum(-1))
 
             return action.detach().cpu().numpy()
 
@@ -126,14 +124,13 @@ class ActorCritic(nn.Module):
             return action.item()
 
     def evaluate(self, state, action):
-
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
-            action_std = self.log_std.exp().expand_as(action_mean)  # Expand log_std to match action_mean
+            action_std = self.log_std.exp().expand_as(action_mean)
             dist = torch.distributions.Normal(action_mean, action_std)
 
-            action_logprobs = dist.log_prob(action).sum(-1)  # Sum over action dimensions
-            dist_entropy = dist.entropy().sum(-1)  # Sum over action dimensions
+            action_logprobs = dist.log_prob(action).sum(-1)
+            dist_entropy = dist.entropy().sum(-1)
 
             state_value = self.critic(state)
 
@@ -157,13 +154,23 @@ class ActorCritic(nn.Module):
 # PPO Class
 ##############################################
 
+# The base of this implementation of the ActorCritic class was taken from the solution to exercise 08_Gym-PPO-solution/PPO.py
+# of the Reinforcement Learning course WiSe 24/25 by Prof. Martius:
+# Adjustments have been made
+# - using adjusted ActorCritic class
+# - implementing c1 and c2 as hyperparameters
+# - implementing PPG: auxiliary phase and policy phase with beta_clone as a hyperparameter
+# -
+
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space = True, action_std_init = 0.6):
+    def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init,
+                 lr, betas, gamma, K_epochs, eps_clip, c1, c2, beta_clone):
+
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
-        self.eps_clip = eps_clip
         self.K_epochs = K_epochs
+        self.eps_clip = eps_clip
 
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init).to(device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
@@ -173,6 +180,13 @@ class PPO:
         self.MseLoss = nn.MSELoss()
 
         self.has_continuous_action_space = has_continuous_action_space
+
+        self.c1 = c1
+        self.c2 = c2
+
+        self.beta_clone = beta_clone
+
+        self.aux_optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)  # Separate optimizer for auxiliary phase
 
         if has_continuous_action_space:
             self.action_std = action_std_init
@@ -206,7 +220,7 @@ class PPO:
             rewards.insert(0, discounted_reward)
 
         # Normalizing the rewards:
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = torch.tensor(rewards, dtype = torch.float32).to(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
@@ -225,8 +239,8 @@ class PPO:
             # Finding Surrogate Loss:
             advantages = rewards - state_values.detach()
             surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
-            loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy
+            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+            loss = -torch.min(surr1, surr2) + self.c1 * self.MseLoss(state_values, rewards) - self.c2 * dist_entropy
 
             # take gradient step
             self.optimizer.zero_grad()
@@ -235,6 +249,47 @@ class PPO:
 
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
+
+    def auxiliary_phase(self, memory):
+        """
+        Train the value function with distillation loss.
+        """
+        old_states = torch.stack(memory.states).to(device).detach()
+        old_actions = torch.stack(memory.actions).to(device).detach()
+        old_logprobs = torch.stack(memory.logprobs).to(device).detach()
+
+        # Monte Carlo estimate of state rewards
+        rewards = []
+        discounted_reward = 0
+        for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
+            if is_terminal:
+                discounted_reward = 0
+            discounted_reward = reward + (self.gamma * discounted_reward)
+            rewards.insert(0, discounted_reward)
+
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        # rewards = torch.clamp(rewards, min = -10, max = 10)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+
+        # Train the value function
+        for _ in range(self.K_epochs):
+
+            # Auxiliary loss: Laux = 0.5 * ^E[(V(s) - V_targ)^2
+            _, state_values, _ = self.policy.evaluate(old_states, old_actions)
+            aux_loss = 0.5 * self.MseLoss(state_values, rewards)
+
+            # Behavioral cloning loss: Lbc = 0.5 * ^E[(V(s) - V_old(s))^2
+            with torch.no_grad():
+                _, old_state_values, _ = self.policy_old.evaluate(old_states, old_actions)
+            bc_loss = self.MseLoss(state_values, old_state_values)
+
+            # Joint loss
+            total_loss = aux_loss + self.beta_clone * bc_loss
+
+            # Take gradient step
+            self.aux_optimizer.zero_grad()
+            total_loss.mean().backward()
+            self.aux_optimizer.step()
 
     def save_checkpoint(self, checkpoint_dir, episode):
         os.makedirs(checkpoint_dir, exist_ok=True)
