@@ -4,7 +4,7 @@ import torch.nn as nn
 # import numpy as np
 import os
 # from torch.distributions import MultivariateNormal
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Beta
 # import torch.nn.functional as F
 # import torch.distributions as distributions
 
@@ -41,7 +41,7 @@ class Memory:
 # of the Reinforcement Learning course WiSe 24/25 by Prof. Martius:
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic):
+    def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic):
         super(ActorCritic, self).__init__()
 
         self.has_continuous_action_space = has_continuous_action_space
@@ -58,15 +58,15 @@ class ActorCritic(nn.Module):
         # Actor Network Initialization
         self.action_layer = []
 
-        self.action_layer.append(nn.Linear(state_dim, n_latent_var))
+        self.action_layer.append(nn.Linear(state_dim, n_latent_var_actor))
         self.action_layer.append(activation_function())
 
         # Actor Network Initialization
         for i in range(network_depth_actor):
-            self.action_layer.append(nn.Linear(n_latent_var, n_latent_var))
+            self.action_layer.append(nn.Linear(n_latent_var_actor, n_latent_var_actor))
             self.action_layer.append(activation_function())
 
-        self.action_layer.append(nn.Linear(n_latent_var, action_dim))
+        self.action_layer.append(nn.Linear(n_latent_var_actor, action_dim))
         if has_continuous_action_space:
             self.action_layer.append(nn.Tanh())
 
@@ -85,14 +85,14 @@ class ActorCritic(nn.Module):
         # Critic Network Initialization
         self.value_layer = []
 
-        self.value_layer.append(nn.Linear(state_dim, n_latent_var))
+        self.value_layer.append(nn.Linear(state_dim, n_latent_var_critic))
         self.value_layer.append(activation_function())
 
         for i in range(network_depth_critic):
-            self.value_layer.append(nn.Linear(n_latent_var, n_latent_var))
+            self.value_layer.append(nn.Linear(n_latent_var_critic, n_latent_var_critic))
             self.value_layer.append(activation_function())
 
-        self.value_layer.append(nn.Linear(n_latent_var, 1))
+        self.value_layer.append(nn.Linear(n_latent_var_critic, 1))
 
 
         # self.value_layer = nn.Sequential(
@@ -110,8 +110,8 @@ class ActorCritic(nn.Module):
         # Initialization
         for layer in self.action_layer[:-2]:
             if isinstance(layer, nn.Linear):
-                torch.nn.init.xavier_uniform_(layer.weight, gain=0.01)
-                # torch.nn.init.orthogonal_(layer.weight, gain=0.01)
+                # torch.nn.init.xavier_uniform_(layer.weight, gain=0.01)
+                torch.nn.init.orthogonal_(layer.weight, gain=0.01)
 
         for layer in self.value_layer[:-1]:
             if isinstance(layer, nn.Linear):
@@ -134,7 +134,14 @@ class ActorCritic(nn.Module):
             state = torch.from_numpy(state).float().to(device)
             action_mean = self.action_layer(state)
             action_std = self.log_std.exp().expand_as(action_mean)
-            dist = torch.distributions.Normal(action_mean, action_std)
+            # dist = torch.distributions.Normal(action_mean, action_std)
+            # action = dist.sample()
+
+            # alpha, beta > 1: log(1 + exp(x)) + 1
+            alpha = torch.log(1 + torch.exp(action_mean)) + 1
+            beta = torch.log(1 + torch.exp(action_std)) + 1
+
+            dist = Beta(alpha, beta)
             action = dist.sample()
 
             memory.states.append(state)
@@ -183,7 +190,7 @@ class ActorCritic(nn.Module):
 ##############################################
 
 class PPO_init:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space,
+    def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, lr, betas, gamma, K_epochs, eps_clip, has_continuous_action_space,
                  action_std_init, c1, c2, beta_clone, network_depth_actor, network_depth_critic):
         self.lr = lr
         self.betas = betas
@@ -191,10 +198,10 @@ class PPO_init:
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
 
-        self.policy = ActorCritic(state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic).to(device)
+        self.policy = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic).to(device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.9)  # Reduce LR every 10 epochs
-        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic).to(device)
+        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, has_continuous_action_space, action_std_init, network_depth_actor, network_depth_critic).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         self.MseLoss = nn.MSELoss()
