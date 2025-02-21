@@ -5,7 +5,7 @@ import numpy as np
 import random
 import torch
 import matplotlib.pyplot as plt
-from KI_PPO_ppg2_initialized import PPO_init, Memory
+from PPG_improved import PPO_init, Memory
 
 
 env = h_env.HockeyEnv_BasicOpponent(mode = Mode.NORMAL, weak_opponent = False)
@@ -36,15 +36,16 @@ ppo_2 = PPO_init(
 )
 
 
-checkpoint_freq = 100000
-checkpoint_dir = "./checkpoints_ppg_init"
+checkpoint_freq = 10000
+checkpoint_dir = "./checkpoints_ppg_init/"
 
 update_timestep = 500
 
-episodes = 10000
-checkp = "checkpoint_500.pth"
+episodes = 100001
+checkp = "checkpoint_final.pth"
 ppo_2.load_checkpoint(checkpoint_dir + checkp)
 
+checkpoint_dir = "./checkpoints_ppg_init"
 
 def train_ppg(env, ppo_agent, num_episodes, aux_phase_freq):
     """
@@ -54,7 +55,7 @@ def train_ppg(env, ppo_agent, num_episodes, aux_phase_freq):
     episode_rewards = []  # Track rewards for each episode
     info_list = []  # Track additional info (e.g., winner)
 
-    for episode in range(num_episodes):
+    for episode in range(episodes, num_episodes):
         state, _ = env.reset()
         state = state.flatten()
         done = False
@@ -107,7 +108,7 @@ def train_ppg(env, ppo_agent, num_episodes, aux_phase_freq):
 
     return episode_rewards, info_list, ppo_agent
 
-episode_rewards_ppg2, info_list_ppg2, ppo_2 = train_ppg(env, ppo_2, num_episodes = 100000, aux_phase_freq = 50)
+episode_rewards_ppg2, info_list_ppg2, ppo_2 = train_ppg(env, ppo_2, num_episodes = 200000, aux_phase_freq = 50)
 
 
 # Save final model

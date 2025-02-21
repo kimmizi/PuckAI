@@ -6,7 +6,7 @@ import hockey.hockey_env as h_env
 from hockey.hockey_env import Mode
 # from KI_PPO_ppg2 import PPO_2, Memory
 # from KI_PPO_PPG_3fails import PPO_optim, Memory
-from KI_PPO_ppg2_initialized import PPO_init, Memory
+from PPG_improved import PPO_init, Memory
 
 memory = Memory()
 timestep = 0
