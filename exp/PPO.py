@@ -249,7 +249,7 @@ class PPO:
             loss_vf = self.MseLoss(state_values, rewards)
 
             # total PPO Loss:
-            loss = loss_clipped + self.c1 * loss_vf - self.c2 * dist_entropy
+            loss = loss_clipped + 0.5 * loss_vf - 0.01 * dist_entropy
 
             # take gradient step
             self.optimizer.zero_grad()
