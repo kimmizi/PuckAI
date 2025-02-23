@@ -45,6 +45,7 @@ class Memory:
 # Adjustments have been made
 # - implementing multiple layers of NN
 # - handling both continous and discrete actions
+# - adding condition for evaluating the model with memory == None
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init):
@@ -108,9 +109,12 @@ class ActorCritic(nn.Module):
             dist = torch.distributions.Normal(action_mean, action_std)
             action = dist.sample()
 
-            memory.states.append(state)
-            memory.actions.append(action)
-            memory.logprobs.append(dist.log_prob(action).sum(-1))  # Sum over action dimensions
+            if memory is not None:
+                memory.states.append(state)
+                memory.actions.append(action)
+                memory.logprobs.append(dist.log_prob(action).sum(-1))
+            else:
+                torch.no_grad()
 
             return action.detach().cpu().numpy()
 
@@ -120,9 +124,12 @@ class ActorCritic(nn.Module):
             dist = Categorical(action_probs)
             action = dist.sample()
 
-            memory.states.append(state)
-            memory.actions.append(action)
-            memory.logprobs.append(dist.log_prob(action))
+            if memory is not None:
+                memory.states.append(state)
+                memory.actions.append(action)
+                memory.logprobs.append(dist.log_prob(action).sum(-1))
+            else:
+                torch.no_grad()
 
             return action.item()
 
@@ -162,28 +169,25 @@ class PPO:
     def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init,
                  lr, betas, gamma, K_epochs, eps_clip, c1, c2, beta_clone):
 
+        self.has_continuous_action_space = has_continuous_action_space
+
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
         self.K_epochs = K_epochs
         self.eps_clip = eps_clip
+        self.c1 = c1
+        self.c2 = c2
+        self.beta_clone = beta_clone
+
 
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init).to(device)
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size = 10, gamma = 0.9)
         self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
 
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr = lr, betas = betas)
+        self.aux_optimizer = torch.optim.Adam(self.policy.parameters(), lr = lr, betas = betas)
         self.MseLoss = nn.MSELoss()
-
-        self.has_continuous_action_space = has_continuous_action_space
-
-        self.c1 = c1
-        self.c2 = c2
-
-        self.beta_clone = beta_clone
-
-        self.aux_optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)  # Separate optimizer for auxiliary phase
 
         if has_continuous_action_space:
             self.action_std = action_std_init
@@ -206,11 +210,8 @@ class PPO:
                 print("setting actor output action_std to : ", self.action_std)
             self.set_action_std(self.action_std)
 
+    # Generalized Advantage Estimation (GAE)
     def gae(self, memory):
-        """
-        Generalized Advantage Estimation
-        """
-
         state_values = self.policy.critic(torch.stack(memory.states).to(device)).detach()
         next_state_values = self.policy.critic(torch.stack(memory.states + [memory.states[-1]]).to(device)).detach()
         deltas = [r + self.gamma * next_v - v for r, next_v, v in zip(memory.rewards, next_state_values, state_values)]
@@ -227,10 +228,8 @@ class PPO:
 
         return advantages
 
+    # Monte Carlo estimate
     def mc_rewards(self, memory):
-        """
-        Monte Carlo estimate of state rewards
-        """
         old_states = torch.stack(memory.states).to(device).detach()
 
         rewards = []
@@ -247,7 +246,6 @@ class PPO:
         return rewards
 
     def update(self, memory):
-        # convert list to tensor
         old_states = torch.stack(memory.states).to(device).detach()
         old_actions = torch.stack(memory.actions).to(device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
@@ -256,43 +254,53 @@ class PPO:
         advantages = self.gae(memory)
         rewards = self.mc_rewards(memory)
 
-        # Optimize policy for K epochs:
+        # optimize policy for K epochs:
         for _ in range(self.K_epochs):
-            # Evaluating old actions and values :
+
             logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
 
-            # Finding the ratio (pi_theta / pi_theta__old):
+            # ratio of probability between the old and the new policies
+            # = importance weights (pi_theta / pi_theta__old):
             ratios = torch.exp(logprobs - old_logprobs.detach())
 
-            # Finding Surrogate Loss:
-            # advantages = rewards - state_values.detach()
+            # advantages:
+            advantages = rewards - state_values.detach()
+
+            # clipped loss:
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            loss = -torch.min(surr1, surr2) + self.c1 * self.MseLoss(state_values, rewards) - self.c2 * dist_entropy
+            loss_clipped = -torch.min(surr1, surr2)
+
+            # value function loss:
+            loss_vf = self.MseLoss(state_values, rewards)
+
+            # total PPO Loss:
+            loss = loss_clipped + self.c1 * loss_vf - self.c2 * dist_entropy
 
             # take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
             self.optimizer.step()
 
-        # Copy new weights into old policy:
+        # copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
     def auxiliary_phase(self, memory):
-        """
-        Train the value function with distillation loss.
-        """
         old_states = torch.stack(memory.states).to(device).detach()
         old_actions = torch.stack(memory.actions).to(device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
 
-        # GAE for advantages and Monte Carlo for rewards
+        # compute state values from old policy
+        with torch.no_grad():
+            old_values = self.policy_old.evaluate(old_states, old_actions)[1].squeeze()
+
+        # Monte Carlo estimate of state rewards
         rewards = self.mc_rewards(memory)
 
-        # Train the value function
+        # train the value function
         for _ in range(self.K_epochs):
 
-            # Auxiliary loss: Laux = 0.5 * ^E[(V(s) - V_targ)^2
+            # Auxiliary loss: L_aux = 0.5 * ^E[(V(s) - V_targ)^2
             _, state_values, _ = self.policy.evaluate(old_states, old_actions)
             aux_loss = 0.5 * self.MseLoss(state_values, rewards)
 
@@ -304,7 +312,7 @@ class PPO:
             # Joint loss
             total_loss = aux_loss + self.beta_clone * bc_loss
 
-            # Take gradient step
+            # take gradient step
             self.aux_optimizer.zero_grad()
             total_loss.mean().backward()
             self.aux_optimizer.step()

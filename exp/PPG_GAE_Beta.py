@@ -106,8 +106,20 @@ class ActorCritic(nn.Module):
             state = torch.from_numpy(state).float().to(device)
             action_mean = self.actor(state)
             action_std = self.log_std.exp().expand_as(action_mean)  # Expand log_std to match action_mean
-            dist = torch.distributions.Normal(action_mean, action_std)
+            # dist = torch.distributions.Normal(action_mean, action_std)
+            # action = dist.sample()
+
+            #######################
+            ### ADJUSTMENT TO VANILLA PPO:
+            ### **SOURCE:** Hsu et al. (2020)
+            ### https://arxiv.org/abs/2009.10897
+            # Using Beta distribution for parameterizing policy action space instead of Normal distribution
+            # alpha, beta > 1: log(1 + exp(x)) + 1
+            alpha = torch.log(1 + torch.exp(action_mean)) + 1
+            beta = torch.log(1 + torch.exp(action_std)) + 1
+            dist = Beta(alpha, beta)
             action = dist.sample()
+            #######################
 
             if memory is not None:
                 memory.states.append(state)
@@ -137,11 +149,11 @@ class ActorCritic(nn.Module):
 
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
-            action_std = self.log_std.exp().expand_as(action_mean)
+            action_std = self.log_std.exp().expand_as(action_mean)  # Expand log_std to match action_mean
             dist = torch.distributions.Normal(action_mean, action_std)
 
-            action_logprobs = dist.log_prob(action).sum(-1)
-            dist_entropy = dist.entropy().sum(-1)
+            action_logprobs = dist.log_prob(action).sum(-1)  # Sum over action dimensions
+            dist_entropy = dist.entropy().sum(-1)  # Sum over action dimensions
 
             state_value = self.critic(state)
 
@@ -230,6 +242,8 @@ class PPO:
 
     # Monte Carlo estimate
     def mc_rewards(self, memory):
+        old_states = torch.stack(memory.states).to(device).detach()
+
         rewards = []
         discounted_reward = 0
         for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
@@ -252,46 +266,6 @@ class PPO:
         advantages = self.gae(memory)
         rewards = self.mc_rewards(memory)
 
-        kl_beta = 0.01
-        target_kl = 0.01
-
-        # # optimize policy for K epochs:
-        # for _ in range(self.K_epochs):
-        #
-        #     logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
-        #
-        #     # ratio of probability between the old and the new policies
-        #     # = importance weights (pi_theta / pi_theta__old):
-        #     ratios = torch.exp(logprobs - old_logprobs.detach())
-        #
-        #     # KL divergence
-        #     with torch.no_grad():
-        #         old_logprobs_, _, _ = self.policy_old.evaluate(old_states, old_actions)
-        #         kl_div = torch.mean(old_logprobs_ - logprobs)  # Reverse KL: D_KL(pi_old || pi)
-        #
-        #     # clipped loss:
-        #     surr1 = ratios * advantages
-        #     surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-        #     loss_clipped = -torch.min(surr1, surr2)
-        #
-        #     # value function loss:
-        #     loss_vf = self.MseLoss(state_values, rewards)
-        #
-        #     # total PPO Loss with KL divergence
-        #     loss = loss_clipped + self.c1 * loss_vf - self.c2 * dist_entropy + kl_beta * kl_div
-        #
-        #     # take gradient step
-        #     self.optimizer.zero_grad()
-        #     loss.mean().backward()
-        #     self.optimizer.step()
-        #
-        #     # adjust KL beta dynamically
-        #     if kl_div > 1.5 * target_kl:
-        #         kl_beta *= 2
-        #     elif kl_div < target_kl / 1.5:
-        #         kl_beta /= 2
-        #     kl_beta = max(kl_beta, 1e-4)  # Ensure kl_beta does not become too small
-
         # optimize policy for K epochs:
         for _ in range(self.K_epochs):
 
@@ -301,18 +275,19 @@ class PPO:
             # = importance weights (pi_theta / pi_theta__old):
             ratios = torch.exp(logprobs - old_logprobs.detach())
 
-            # Compute KL divergence
-            # KL[pi_new || pi_old]
-            with torch.no_grad():
-                old_logprobs_, _, _ = self.policy_old.evaluate(old_states, old_actions)
-                kl_loss = torch.mean(logprobs - old_logprobs_)
+            # advantages:
+            advantages = rewards - state_values.detach()
+
+            # clipped loss:
+            surr1 = ratios * advantages
+            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+            loss_clipped = -torch.min(surr1, surr2)
 
             # value function loss:
             loss_vf = self.MseLoss(state_values, rewards)
 
-            # total PPO Loss with KL divergence
-            # KL_loss = E[ratios * advantages] - beta * KL[pi_new || pi_old]
-            loss = -ratios * advantages + self.c1 * loss_vf - self.c2 * dist_entropy + kl_beta * kl_loss
+            # total PPO Loss:
+            loss = loss_clipped + self.c1 * loss_vf - self.c2 * dist_entropy
 
             # take gradient step
             self.optimizer.zero_grad()
@@ -353,7 +328,6 @@ class PPO:
             self.aux_optimizer.zero_grad()
             total_loss.mean().backward()
             self.aux_optimizer.step()
-
 
     def save_checkpoint(self, checkpoint_dir, episode):
         os.makedirs(checkpoint_dir, exist_ok=True)
