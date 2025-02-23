@@ -38,7 +38,7 @@ cp -R KI_PPO_ppg2.py /scratch/$SLURM_JOB_ID/
 cp -R PPG_batch.py /scratch/$SLURM_JOB_ID/
 
 # Run script inside Singularity container
-singularity exec --nv /common/singularityImages/TCML-CUDA12_4_TF2_17_PT_2_4.simg python3 ~/Comparison_batch.py
+singularity exec --nv /common/singularityImages/TCML-CUDA12_4_TF2_17_PT_2_4.simg python3 ~/PPG_batch.py
 
 echo "DONE!"
 
