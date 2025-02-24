@@ -9,7 +9,7 @@ import numpy as np
 
 from comprl.client import Agent, launch_client
 
-from src.PPG_KL_Beta import PPO
+from PPG_KL_Beta import PPO
 
 
 class PPO_kimi(Agent):
