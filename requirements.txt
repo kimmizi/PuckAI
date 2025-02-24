@@ -118,3 +118,7 @@ webcolors==24.11.1
 webencodings==0.5.1
 websocket-client==1.8.0
 widgetsnbextension==4.0.13
+
+hockey~=2.6
+comprl~=0.2.3.dev0
+optuna~=4.2.1

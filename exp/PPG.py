@@ -8,7 +8,7 @@ import optparse
 import pickle
 from enum import Enum
 from torch.distributions import MultivariateNormal
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Beta
 import torch.nn.functional as F
 import torch.distributions as distributions
 
@@ -76,7 +76,6 @@ class ActorCritic(nn.Module):
         if has_continuous_action_space:
             self.action_layer.append(nn.Tanh())
 
-        self.actor = nn.Sequential(*self.action_layer)
 
         # Critic Network Initialization
         self.value_layer = []
@@ -91,18 +90,22 @@ class ActorCritic(nn.Module):
 
         self.value_layer.append(nn.Linear(n_latent_var_critic, 1))
 
+        self.actor = nn.Sequential(*self.action_layer)
         self.critic = nn.Sequential(*self.value_layer)
 
     def set_action_std(self, new_action_std):
         if self.has_continuous_action_space:
             self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
 
+    def forward(self):
+        raise NotImplementedError
+
     def act(self, state, memory):
 
         if self.has_continuous_action_space:
             state = torch.from_numpy(state).float().to(device)
             action_mean = self.actor(state)
-            action_std = self.log_std.exp().expand_as(action_mean)
+            action_std = self.log_std.exp().expand_as(action_mean)  # Expand log_std to match action_mean
             dist = torch.distributions.Normal(action_mean, action_std)
             action = dist.sample()
 
@@ -131,13 +134,14 @@ class ActorCritic(nn.Module):
             return action.item()
 
     def evaluate(self, state, action):
+
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
-            action_std = self.log_std.exp().expand_as(action_mean)
+            action_std = self.log_std.exp().expand_as(action_mean)  # Expand log_std to match action_mean
             dist = torch.distributions.Normal(action_mean, action_std)
 
-            action_logprobs = dist.log_prob(action).sum(-1)
-            dist_entropy = dist.entropy().sum(-1)
+            action_logprobs = dist.log_prob(action).sum(-1)  # Sum over action dimensions
+            dist_entropy = dist.entropy().sum(-1)  # Sum over action dimensions
 
             state_value = self.critic(state)
 
@@ -160,14 +164,6 @@ class ActorCritic(nn.Module):
 ##############################################
 # PPO Class
 ##############################################
-
-# The base of this implementation of the ActorCritic class was taken from the solution to exercise 08_Gym-PPO-solution/PPO.py
-# of the Reinforcement Learning course WiSe 24/25 by Prof. Martius:
-# Adjustments have been made
-# - using adjusted ActorCritic class
-# - implementing c1 and c2 as hyperparameters
-# - implementing PPG: auxiliary phase and policy phase with beta_clone as a hyperparameter
-# -
 
 class PPO:
     def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init,
@@ -214,6 +210,24 @@ class PPO:
                 print("setting actor output action_std to : ", self.action_std)
             self.set_action_std(self.action_std)
 
+    # Generalized Advantage Estimation (GAE)
+    def gae(self, memory):
+        state_values = self.policy.critic(torch.stack(memory.states).to(device)).detach()
+        next_state_values = self.policy.critic(torch.stack(memory.states + [memory.states[-1]]).to(device)).detach()
+        deltas = [r + self.gamma * next_v - v for r, next_v, v in zip(memory.rewards, next_state_values, state_values)]
+
+        advantages = []
+        advantage = 0
+
+        for delta in deltas[::-1]:
+            advantage = delta + self.gamma * advantage
+            advantages.insert(0, advantage)
+
+        advantages = torch.tensor(advantages, dtype = torch.float32).to(device)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+
+        return advantages
+
     # Monte Carlo estimate
     def mc_rewards(self, memory):
         old_states = torch.stack(memory.states).to(device).detach()
@@ -236,6 +250,8 @@ class PPO:
         old_actions = torch.stack(memory.actions).to(device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
 
+        # GAE for advantages and Monte Carlo for rewards
+        advantages = self.gae(memory)
         rewards = self.mc_rewards(memory)
 
         # optimize policy for K epochs:
@@ -270,6 +286,11 @@ class PPO:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
     def auxiliary_phase(self, memory):
+
+        if not memory.states:
+            print("Warning: No states available, skipping auxiliary phase.")
+            return
+
         old_states = torch.stack(memory.states).to(device).detach()
         old_actions = torch.stack(memory.actions).to(device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
