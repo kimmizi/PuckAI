@@ -35,7 +35,7 @@ ppg_KL = PPO(
 
 # Load model
 episodes = 5000
-ppg_KL.load_checkpoint("checkpoints_ppg_kl/checkpoint_final.pth")
+ppg_KL.load_checkpoint("checkpoints_ppg_kl/checkpoint_final_2.pth")
 print("Model loaded")
 
 

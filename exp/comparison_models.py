@@ -435,7 +435,7 @@ aux_phase = 50
 
 if env == "Hockey":
     rewards_ppo, info_ppo, ppo_vanilla = train_hockey_ppo_weak(env_hockey, max_eps, max_tsteps, upd_tsteps, aux_phase, ppo_vanilla)
-    np.save( "rewards_ppo.npy", rewards_ppo)
+    np.save( "rewards_ppo_pendulum.npy", rewards_ppo)
     np.save( "info_ppo.npy", info_ppo)
 
     rewards_ppg, info_ppg, ppg = train_hockey_ppg_weak(env_hockey, max_eps, max_tsteps, upd_tsteps, aux_phase, ppg)
@@ -455,8 +455,8 @@ if env == "Hockey":
     np.save( "info_ppg_kl_beta.npy", info_ppg_kl_beta)
 
 elif env == "Pendulum" or env == "HalfCheetah":
-    rewards_ppo = train_pendulum_ppo(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppo_vanilla)
-    np.save( "rewards_ppo.npy", rewards_ppo)
+    # rewards_ppo = train_pendulum_ppo(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppo_vanilla)
+    # np.save( "rewards_ppo_pendulum.npy", rewards_ppo)
 
     rewards_ppg = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg)
     np.save( "rewards_ppg.npy", rewards_ppg)
