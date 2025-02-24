@@ -13,7 +13,7 @@ if env == "Hockey":
     state_dim = env_hockey.observation_space.shape[0]
     action_dim = 4
 
-    from PPO import PPO, Memory
+    from src.PPO import PPO, Memory
     ppo_vanilla = PPO(
         state_dim,
         action_dim,
@@ -28,7 +28,7 @@ if env == "Hockey":
     )
 
 
-    from PPG import PPO, Memory
+    from src.PPG import PPO, Memory
     ppg = PPO(
         state_dim,
         action_dim,
@@ -48,7 +48,7 @@ if env == "Hockey":
         beta_clone = 0.95
     )
 
-    from PPG_KL import PPO
+    from src.PPG_KL import PPO
     ppg_KL = PPO(
         state_dim,
         action_dim,
@@ -68,7 +68,7 @@ if env == "Hockey":
         beta_clone = 0.95
     )
 
-    from PPG_Beta import PPO
+    from src.PPG_Beta import PPO
     ppg_beta = PPO(
         state_dim,
         action_dim,
@@ -88,7 +88,7 @@ if env == "Hockey":
         beta_clone = 0.95
     )
 
-    from PPG_KL_Beta import PPO
+    from src.PPG_KL_Beta import PPO
     ppg_KL_beta = PPO(
         state_dim,
         action_dim,
@@ -120,7 +120,7 @@ elif env == "HalfCheetah":
     action_dim = env_halfcheetah.action_space.shape[0]
 
 if env == "Pendulum" or env == "HalfCheetah":
-    from PPO import PPO, Memory
+    from src.PPO import PPO, Memory
     ppo_vanilla = PPO(
         state_dim,
         action_dim,
@@ -134,7 +134,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         action_std_init = 0.5
     )
 
-    from PPG import PPO, Memory
+    from src.PPG import PPO, Memory
     ppg = PPO(
         state_dim,
         action_dim,
@@ -154,7 +154,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         beta_clone = 0.95
     )
 
-    from PPG_KL import PPO
+    from src.PPG_KL import PPO
     ppg_KL = PPO(
         state_dim,
         action_dim,
@@ -174,7 +174,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         beta_clone = 0.95
     )
 
-    from PPG_Beta import PPO
+    from src.PPG_Beta import PPO
     ppg_beta = PPO(
         state_dim,
         action_dim,
@@ -194,7 +194,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         beta_clone = 0.95
     )
 
-    from PPG_KL_Beta import PPO
+    from src.PPG_KL_Beta import PPO
     ppg_KL_beta = PPO(
         state_dim,
         action_dim,

@@ -1,18 +1,14 @@
 import hockey.hockey_env as h_env
 from hockey.hockey_env import Mode
-import gymnasium as gym
 import numpy as np
 import random
-import torch
-import matplotlib.pyplot as plt
-
 
 env_hockey = h_env.HockeyEnv_BasicOpponent(mode = Mode.NORMAL, weak_opponent = False)
 state_dim = env_hockey.observation_space.shape[0]
 action_dim = env_hockey.action_space.shape[0]
 
 
-from PPG_KL import PPO, Memory
+from src.PPG_KL import PPO, Memory
 
 ppg_KL = PPO(
     state_dim,
