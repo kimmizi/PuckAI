@@ -4,7 +4,7 @@ This repo contains the code used for the final project report of **Reinforcement
 
 The goal is to develop a reinforcement learning (RL) agent capable of solving simple control tasks and competing in a simulated hockey game: https://github.com/martius-lab/hockey-env 
 
-The core model is based on Proximal Policy Optimization (PPO) and extended with techniques such as Phasic Policy Gradient (PPG), KL divergence regularization, and Beta policy parameterization to address common PPO failure modes.
+The base model is based on Proximal Policy Optimization (PPO) and extended with techniques such as Phasic Policy Gradient (PPG), KL divergence regularization, and Beta policy parameterization to address common PPO failure modes.
 
 <p align = "center">
   <img src = "doc/fig/hockey_image.png" height = "200">
@@ -24,7 +24,7 @@ You will find the models I build in the directory `.\src`, the experiments I con
 I compared five PPO models that get increasingly optimized:
 
 <p align>
-  <img src = "doc/fig/overview_models.png" height = "200">
+  <img src = "doc/fig/overview_models_2.png" height = "200">
 </p>
 
 ---
@@ -33,9 +33,35 @@ I compared five PPO models that get increasingly optimized:
 
 In `.\exp\Documentation_RL_Project.ipynb` you can find a documentation of my experiments. `.\exp\comparison_models.py` is a script for comparing the five different PPO modifications, `.\exp\train.py` is a training loop for training the final model, `.\exp\hyperparam_search.py` is a script for hyperparameter tuning, and `.\exp\run_client.py` is a script used for the final tournament.
 
-### Simple Environments
+### Comparison of Models: Simple Environments
 
-### Hockey Environment
+#### HalfCheetah Envrionment
+Vanilla PPO exhibits high training uncertainty and oscillating rewards. PPG and PPG with KL divergence shows stable training. PPG models with Beta distribution stabilize training even more but result in nearly constant average rewards.
+<p align>
+  <img src = "doc/fig/comparison_cheetah_wppo.png" height = "200">
+  <img src = "doc/fig/comparison_cheetah_woppo.png" height = "200">
+</p>
+
+#### Pendulum Environment
+Vanilla PPO struggles with stagnation, whereas PPG and PPG with KL divergence show improved learning behavior. Models using the Beta distribution perform worse, with unstable training.
+<p align>
+  <img src = "doc/fig/comparison_pendulum.png" height = "200">
+</p>
+
+#### Hockey Environment (Weak Basic Opponent)
+Beta-parametrized models show poor training behavior with lower constant rewards. PPO, PPG, and PPG with KL divergence achieve slightly higher rewards but still struggle to learn.
+<p align>
+  <img src = "doc/fig/hockey_env_training.png" height = "200">
+</p>
+
+
+### Evaluation: Hockey Environment
+
+<p align>
+  <img src = "doc/fig/rewards_final_model.png" height = "200">
+  <img src = "doc/fig/winningrate_final_model.png" height = "200">
+  <img src = "doc/fig/winsrate_table.png" height = "200">
+</p>
 
 
 
