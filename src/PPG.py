@@ -180,7 +180,6 @@ class PPO:
         self.c2 = c2
         self.beta_clone = beta_clone
 
-
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init).to(device)
         self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
@@ -210,7 +209,11 @@ class PPO:
                 print("setting actor output action_std to : ", self.action_std)
             self.set_action_std(self.action_std)
 
-    # Generalized Advantage Estimation (GAE)
+    #######################
+    ### ADJUSTMENT TO VANILLA PPO:
+    ### **SOURCE:** Schulman et al. (2018)
+    ### https://arxiv.org/abs/1506.02438
+    # Using Generalized Advantage Estimation (GAE) for advantage calculation
     def gae(self, memory):
         state_values = self.policy.critic(torch.stack(memory.states).to(device)).detach()
         next_state_values = self.policy.critic(torch.stack(memory.states + [memory.states[-1]]).to(device)).detach()
@@ -227,6 +230,7 @@ class PPO:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         return advantages
+    #######################
 
     # Monte Carlo estimate
     def mc_rewards(self, memory):
@@ -274,7 +278,7 @@ class PPO:
             # value function loss:
             loss_vf = self.MseLoss(state_values, rewards)
 
-            # total PPO Loss:
+            # total PPO Loss with hyperparameters c1 and c2:
             loss = loss_clipped + self.c1 * loss_vf - self.c2 * dist_entropy
 
             # take gradient step
@@ -285,6 +289,11 @@ class PPO:
         # copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
+    #######################
+    #### ADJUSTMENT TO VANILLA PPO:
+    ### **SOURCE:** Cobbe et al. (2020)
+    ### https://arxiv.org/abs/2009.04416
+    # Implementing the auxiliary phase, where we train the value function
     def auxiliary_phase(self, memory):
 
         if not memory.states:
@@ -321,6 +330,7 @@ class PPO:
             self.aux_optimizer.zero_grad()
             total_loss.mean().backward()
             self.aux_optimizer.step()
+    #######################
 
     def save_checkpoint(self, checkpoint_dir, episode):
         os.makedirs(checkpoint_dir, exist_ok=True)

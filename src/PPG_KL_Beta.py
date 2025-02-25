@@ -46,6 +46,7 @@ class Memory:
 # - implementing multiple layers of NN
 # - handling both continous and discrete actions
 # - adding condition for evaluating the model with memory == None
+# - adding Beta distribution for parameterizing policy action space instead of Normal distribution
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, n_latent_var_actor, n_latent_var_critic, network_depth_actor, network_depth_critic, has_continuous_action_space, action_std_init):
@@ -222,7 +223,11 @@ class PPO:
                 print("setting actor output action_std to : ", self.action_std)
             self.set_action_std(self.action_std)
 
-    # Generalized Advantage Estimation (GAE)
+    #######################
+    ### ADJUSTMENT TO VANILLA PPO:
+    ### **SOURCE:** Schulman et al. (2018)
+    ### https://arxiv.org/abs/1506.02438
+    # Using Generalized Advantage Estimation (GAE) for advantage calculation
     def gae(self, memory):
         state_values = self.policy.critic(torch.stack(memory.states).to(device)).detach()
         next_state_values = self.policy.critic(torch.stack(memory.states + [memory.states[-1]]).to(device)).detach()
@@ -239,6 +244,7 @@ class PPO:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         return advantages
+    #######################
 
     # Monte Carlo estimate
     def mc_rewards(self, memory):
@@ -265,44 +271,6 @@ class PPO:
         rewards = self.mc_rewards(memory)
 
         kl_beta = 0.01
-        target_kl = 0.01
-
-        # # optimize policy for K epochs:
-        # for _ in range(self.K_epochs):
-        #
-        #     logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
-        #
-        #     # ratio of probability between the old and the new policies
-        #     # = importance weights (pi_theta / pi_theta__old):
-        #     ratios = torch.exp(logprobs - old_logprobs.detach())
-        #
-        #     # KL divergence
-        #     with torch.no_grad():
-        #         old_logprobs_, _, _ = self.policy_old.evaluate(old_states, old_actions)
-        #         kl_div = torch.mean(old_logprobs_ - logprobs)  # Reverse KL: D_KL(pi_old || pi)
-        #
-        #     # clipped loss:
-        #     surr1 = ratios * advantages
-        #     surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-        #     loss_clipped = -torch.min(surr1, surr2)
-        #
-        #     # value function loss:
-        #     loss_vf = self.MseLoss(state_values, rewards)
-        #
-        #     # total PPO Loss with KL divergence
-        #     loss = loss_clipped + self.c1 * loss_vf - self.c2 * dist_entropy + kl_beta * kl_div
-        #
-        #     # take gradient step
-        #     self.optimizer.zero_grad()
-        #     loss.mean().backward()
-        #     self.optimizer.step()
-        #
-        #     # adjust KL beta dynamically
-        #     if kl_div > 1.5 * target_kl:
-        #         kl_beta *= 2
-        #     elif kl_div < target_kl / 1.5:
-        #         kl_beta /= 2
-        #     kl_beta = max(kl_beta, 1e-4)  # Ensure kl_beta does not become too small
 
         # optimize policy for K epochs:
         for _ in range(self.K_epochs):
@@ -334,6 +302,11 @@ class PPO:
         # copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
+    #######################
+    #### ADJUSTMENT TO VANILLA PPO:
+    ### **SOURCE:** Cobbe et al. (2020)
+    ### https://arxiv.org/abs/2009.04416
+    # Implementing the auxiliary phase, where we train the value function
     def auxiliary_phase(self, memory):
 
         if not memory.states:
@@ -370,7 +343,7 @@ class PPO:
             self.aux_optimizer.zero_grad()
             total_loss.mean().backward()
             self.aux_optimizer.step()
-
+    #######################
 
     def save_checkpoint(self, checkpoint_dir, episode):
         os.makedirs(checkpoint_dir, exist_ok=True)
