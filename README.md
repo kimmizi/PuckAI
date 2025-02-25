@@ -6,12 +6,16 @@ The goal is to develop a reinforcement learning (RL) agent capable of solving si
 
 The core model is based on Proximal Policy Optimization (PPO) and extended with techniques such as Phasic Policy Gradient (PPG), KL divergence regularization, and Beta policy parameterization to address common PPO failure modes.
 
+<p align = "center">
+  <img src = "doc/fig/hockey_image.png" height = "200">
+</p>
+
 
 ---
 
 ## Structure
 
-You will find the models I build in the directory `.\src`, the experiments we conducted in `.\exp`, the data (like rewards, information, checkpoints run at cluster) in `.\dat`, and the report and figures in `.\doc`.
+You will find the models I build in the directory `.\src`, the experiments I conducted in `.\exp`, the data (like rewards, information, checkpoints ran at the cluster) in `.\dat`, and the report and figures in `.\doc`.
 
 ---
 
