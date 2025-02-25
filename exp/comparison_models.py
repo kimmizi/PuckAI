@@ -456,20 +456,30 @@ if env == "Hockey":
     np.save( "info_ppg_kl_beta.npy", info_ppg_kl_beta)
 
 elif env == "Pendulum":
+    print("Agent: ", ppg)
     rewards_ppg = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg)
-    np.save( "../dat/pendulum/rewards_ppg_pendulum.npy", rewards_ppg)
+    np.save( "./pendulum/rewards_ppg_pendulum.npy", rewards_ppg)
+    print("rewards_ppg_pendulum.npy saved")
 
+    print("Agent: ", ppg_KL)
     rewards_ppg_kl = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg_KL)
-    np.save( "../dat/pendulum/rewards_ppg_kl_pendulum.npy", rewards_ppg_kl)
+    np.save( "./pendulum/rewards_ppg_kl_pendulum.npy", rewards_ppg_kl)
+    print("rewards_ppg_kl_pendulum.npy saved")
 
+    print("Agent: ", ppg_beta)
     rewards_ppg_beta = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg_beta)
-    np.save( "../dat/pendulum/rewards_ppg_beta_pendulum.npy", rewards_ppg_beta)
+    np.save( "./pendulum/rewards_ppg_beta_pendulum.npy", rewards_ppg_beta)
+    print("rewards_ppg_beta_pendulum.npy saved")
 
+    print("Agent: ", ppg_KL_beta)
     rewards_ppg_kl_beta = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg_KL_beta)
-    np.save( "../dat/pendulum/rewards_ppg_kl_beta_pendulum.npy", rewards_ppg_kl_beta)
+    np.save( "./pendulum/rewards_ppg_kl_beta_pendulum.npy", rewards_ppg_kl_beta)
+    print("rewards_ppg_kl_beta_pendulum.npy saved")
 
+    print("Agent: ", ppo_vanilla)
     rewards_ppo = train_pendulum_ppo(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppo_vanilla)
-    np.save( "../dat/pendulum/rewards_ppo_pendulum.npy", rewards_ppo)
+    np.save( "./pendulum/rewards_ppo_pendulum.npy", rewards_ppo)
+    print("rewards_ppo_pendulum.npy saved")
 
 elif env == "HalfCheetah":
     rewards_ppg = train_pendulum_ppg(env_halfcheetah, max_eps, max_tsteps, upd_tsteps, ppg)
