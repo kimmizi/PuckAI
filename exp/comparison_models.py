@@ -5,7 +5,7 @@ import hockey.hockey_env as h_env
 from hockey.hockey_env import Mode
 
 
-env = "Pendulum"
+env = "Hockey"
 
 if env == "Hockey":
     # Hockey Env
@@ -436,7 +436,7 @@ aux_phase = 50
 
 if env == "Hockey":
     rewards_ppo, info_ppo, ppo_vanilla = train_hockey_ppo_weak(env_hockey, max_eps, max_tsteps, upd_tsteps, aux_phase, ppo_vanilla)
-    np.save( "rewards_ppo_pendulum.npy", rewards_ppo)
+    np.save( "rewards_ppo.npy", rewards_ppo)
     np.save( "info_ppo.npy", info_ppo)
 
     rewards_ppg, info_ppg, ppg = train_hockey_ppg_weak(env_hockey, max_eps, max_tsteps, upd_tsteps, aux_phase, ppg)
