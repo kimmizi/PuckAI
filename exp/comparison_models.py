@@ -13,7 +13,7 @@ if env == "Hockey":
     state_dim = env_hockey.observation_space.shape[0]
     action_dim = 4
 
-    from src.PPO import PPO, Memory
+    from PPO import PPO, Memory
     ppo_vanilla = PPO(
         state_dim,
         action_dim,
@@ -28,7 +28,7 @@ if env == "Hockey":
     )
 
 
-    from src.PPG import PPO, Memory
+    from PPG import PPO, Memory
     ppg = PPO(
         state_dim,
         action_dim,
@@ -48,7 +48,7 @@ if env == "Hockey":
         beta_clone = 0.95
     )
 
-    from src.PPG_KL import PPO
+    from PPG_KL import PPO
     ppg_KL = PPO(
         state_dim,
         action_dim,
@@ -68,7 +68,7 @@ if env == "Hockey":
         beta_clone = 0.95
     )
 
-    from src.PPG_Beta import PPO
+    from PPG_Beta import PPO
     ppg_beta = PPO(
         state_dim,
         action_dim,
@@ -88,7 +88,7 @@ if env == "Hockey":
         beta_clone = 0.95
     )
 
-    from src.PPG_KL_Beta import PPO
+    from PPG_KL_Beta import PPO
     ppg_KL_beta = PPO(
         state_dim,
         action_dim,
@@ -115,12 +115,12 @@ elif env == "Pendulum":
     action_dim = env_pendulum.action_space.shape[0]
 elif env == "HalfCheetah":
     # Gymnasium: HalfCheetah
-    env_halfcheetah = gym.make("HalfCheetah-v4")
+    env_halfcheetah = gym.make("HalfCheetah-v5")
     state_dim = env_halfcheetah.observation_space.shape[0]
     action_dim = env_halfcheetah.action_space.shape[0]
 
 if env == "Pendulum" or env == "HalfCheetah":
-    from src.PPO import PPO, Memory
+    from PPO import PPO, Memory
     ppo_vanilla = PPO(
         state_dim,
         action_dim,
@@ -134,7 +134,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         action_std_init = 0.5
     )
 
-    from src.PPG import PPO, Memory
+    from PPG import PPO, Memory
     ppg = PPO(
         state_dim,
         action_dim,
@@ -154,7 +154,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         beta_clone = 0.95
     )
 
-    from src.PPG_KL import PPO
+    from PPG_KL import PPO
     ppg_KL = PPO(
         state_dim,
         action_dim,
@@ -174,7 +174,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         beta_clone = 0.95
     )
 
-    from src.PPG_Beta import PPO
+    from PPG_Beta import PPO
     ppg_beta = PPO(
         state_dim,
         action_dim,
@@ -194,7 +194,7 @@ if env == "Pendulum" or env == "HalfCheetah":
         beta_clone = 0.95
     )
 
-    from src.PPG_KL_Beta import PPO
+    from PPG_KL_Beta import PPO
     ppg_KL_beta = PPO(
         state_dim,
         action_dim,
@@ -327,6 +327,7 @@ def train_hockey_ppg_weak(env, max_episodes, max_timesteps, update_timestep, aux
             agent.auxiliary_phase(memory)
             print(f"Episode {episode + 1}, Reward: {episode_reward}")
 
+        # Update PPO
         if episode % update_timestep == 0:
             agent.update(memory)
             memory.clear_memory()
@@ -412,15 +413,15 @@ def train_pendulum_ppg(env, max_episodes, max_timesteps, update_timestep, agent)
             if done:
                 break
 
-        # Update PPO if it's time
-        if episode % update_timestep == 0:
-            agent.update(memory)
-            memory.clear_memory()
-
         # Auxiliary phase: Train value function
         if episode % 50 == 0:
             agent.auxiliary_phase(memory)
             print(f"Episode {episode + 1}, Reward: {episode_reward}")
+
+        # Update PPO if it's time
+        if episode % update_timestep == 0:
+            agent.update(memory)
+            memory.clear_memory()
 
         episode_rewards.append(episode_reward)
 
@@ -430,7 +431,7 @@ def train_pendulum_ppg(env, max_episodes, max_timesteps, update_timestep, agent)
 # Train models
 max_eps = 5000
 max_tsteps = 500
-upd_tsteps = 500
+upd_tsteps = 250
 aux_phase = 50
 
 if env == "Hockey":
@@ -454,18 +455,34 @@ if env == "Hockey":
     np.save( "rewards_ppg_kl_beta.npy", rewards_ppg_kl_beta)
     np.save( "info_ppg_kl_beta.npy", info_ppg_kl_beta)
 
-elif env == "Pendulum" or env == "HalfCheetah":
-    # rewards_ppo = train_pendulum_ppo(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppo_vanilla)
-    # np.save( "rewards_ppo_pendulum.npy", rewards_ppo)
-
+elif env == "Pendulum":
     rewards_ppg = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg)
-    np.save( "rewards_ppg.npy", rewards_ppg)
+    np.save( "../dat/pendulum/rewards_ppg_pendulum.npy", rewards_ppg)
 
     rewards_ppg_kl = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg_KL)
-    np.save( "rewards_ppg_kl.npy", rewards_ppg_kl)
+    np.save( "../dat/pendulum/rewards_ppg_kl_pendulum.npy", rewards_ppg_kl)
 
     rewards_ppg_beta = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg_beta)
-    np.save( "rewards_ppg_beta.npy", rewards_ppg_beta)
+    np.save( "../dat/pendulum/rewards_ppg_beta_pendulum.npy", rewards_ppg_beta)
 
     rewards_ppg_kl_beta = train_pendulum_ppg(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppg_KL_beta)
-    np.save( "rewards_ppg_kl_beta.npy", rewards_ppg_kl_beta)
+    np.save( "../dat/pendulum/rewards_ppg_kl_beta_pendulum.npy", rewards_ppg_kl_beta)
+
+    rewards_ppo = train_pendulum_ppo(env_pendulum, max_eps, max_tsteps, upd_tsteps, ppo_vanilla)
+    np.save( "../dat/pendulum/rewards_ppo_pendulum.npy", rewards_ppo)
+
+elif env == "HalfCheetah":
+    rewards_ppg = train_pendulum_ppg(env_halfcheetah, max_eps, max_tsteps, upd_tsteps, ppg)
+    np.save("../dat/cheetah/rewards_ppg_halfcheetah.npy", rewards_ppg)
+
+    rewards_ppg_kl = train_pendulum_ppg(env_halfcheetah, max_eps, max_tsteps, upd_tsteps, ppg_KL)
+    np.save("../dat/cheetah/rewards_ppg_kl_halfcheetah.npy", rewards_ppg_kl)
+
+    rewards_ppg_beta = train_pendulum_ppg(env_halfcheetah, max_eps, max_tsteps, upd_tsteps, ppg_beta)
+    np.save("../dat/cheetah/rewards_ppg_beta_halfcheetah.npy", rewards_ppg_beta)
+
+    rewards_ppg_kl_beta = train_pendulum_ppg(env_halfcheetah, max_eps, max_tsteps, upd_tsteps, ppg_KL_beta)
+    np.save("../dat/cheetah/rewards_ppg_kl_beta_halfcheetah.npy", rewards_ppg_kl_beta)
+
+    rewards_ppo = train_pendulum_ppo(env_halfcheetah, max_eps, max_tsteps, upd_tsteps, ppo_vanilla)
+    np.save( "../dat/rewards_ppo_halfcheetah.npy", rewards_ppo)

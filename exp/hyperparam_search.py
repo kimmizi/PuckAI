@@ -4,12 +4,7 @@ import torch
 import random
 import hockey.hockey_env as h_env
 from hockey.hockey_env import Mode
-# from KI_PPO_ppg2 import PPO_2, Memory
-# from KI_PPO_PPG_3fails import PPO_optim, Memory
-from PPG_improved import PPO_init, Memory
-
-memory = Memory()
-timestep = 0
+from PPG_KL import PPO, Memory
 
 env = h_env.HockeyEnv_BasicOpponent(mode = Mode.NORMAL, weak_opponent = False)
 state_dim = env.observation_space.shape[0]
@@ -19,11 +14,24 @@ action_dim = env.action_space.shape[0]
 def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var_actor, n_latent_var_critic, action_std, aux_phase, update_timestep, betas, c1, c2, beta_clone, network_depth_actor, network_depth_critic):
 
     # Initialize PPO agent with given hyperparameters
-    ppo_agent = PPO_init(state_dim, action_dim, n_latent_var_actor = n_latent_var_actor, n_latent_var_critic = n_latent_var_critic,
-                         lr = lr, gamma = gamma, eps_clip = eps_clip, K_epochs = K_epochs, has_continuous_action_space = True,
-                         action_std_init = action_std, betas = betas, c1 = c1, c2 = c2, beta_clone = beta_clone, network_depth_actor = network_depth_actor,
-                         network_depth_critic = network_depth_critic
-                         )
+    ppg_agent = PPO(
+        state_dim,
+        action_dim,
+        n_latent_var_actor = n_latent_var_actor,
+        n_latent_var_critic = n_latent_var_critic,
+        network_depth_actor = network_depth_actor,
+        network_depth_critic = network_depth_critic,
+        has_continuous_action_space = True,
+        action_std_init = action_std,
+        lr = lr,
+        betas = betas,
+        gamma = gamma,
+        K_epochs = K_epochs,
+        eps_clip = eps_clip,
+        c1 = c1,
+        c2 = c2,
+        beta_clone = beta_clone
+    )
 
     memory = Memory()
 
@@ -48,7 +56,7 @@ def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var_actor, n_latent_var_cr
 
 
         while not done:
-            action = ppo_agent.policy_old.act(state, memory)
+            action = ppg_agent.policy_old.act(state, memory)
 
             action_opp = player2.act(obs_agent2)
 
@@ -63,13 +71,13 @@ def train_ppo(lr, gamma, eps_clip, K_epochs, n_latent_var_actor, n_latent_var_cr
 
         # Auxiliary phase: Train value function
         if episode % aux_phase == 0:
-            ppo_agent.auxiliary_phase(memory)
+            ppg_agent.auxiliary_phase(memory)
 
         if episode % update_timestep == 0:
-            ppo_agent.update(memory)
+            ppg_agent.update(memory)
             memory.clear_memory()
 
-        # ppo_agent.update(memory)
+        # ppg_agent.update(memory)
         episode_rewards.append(episode_reward)
 
     # Return the average reward
