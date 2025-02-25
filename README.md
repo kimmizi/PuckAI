@@ -60,7 +60,7 @@ The final model is based on PPG with KL divergence, tuned parameters, and Monte 
 <p align>
   <img src = "doc/fig/rewards_final_model.png" height = "200">
   <img src = "doc/fig/winningrate_final_model.png" height = "200">
-  <img src = "doc/fig/winsrate_table.png" height = "150">
+  <img src = "doc/fig/winsrate_table.png" height = "130">
 </p>
 
 ---
