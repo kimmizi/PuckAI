@@ -51,7 +51,7 @@ Vanilla PPO struggles with stagnation, whereas PPG and PPG with KL divergence sh
 #### Hockey Environment (Weak Basic Opponent)
 Beta-parametrized models show poor training behavior with lower constant rewards. PPO, PPG, and PPG with KL divergence achieve slightly higher rewards but still struggle to learn.
 <p align>
-  <img src = "doc/fig/hockey_env_training.png" height = "200">
+  <img src = "doc/fig/comparison_hockey.png" height = "200">
 </p>
 
 
